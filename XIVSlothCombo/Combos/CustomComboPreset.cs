@@ -1877,6 +1877,13 @@ namespace XIVSlothCombo.Combos
 
         #endregion
 
+        #region Solo ST
+        [ReplaceSkill(MCH.SlugShot, MCH.HeatedSlugShot)]
+        [CustomComboInfo("Solo Mode - Single Target", "Replaces Slug Shot with a one-button full single target rotation.\nThis feature is optimized for Solo play, tailored for PotD/HoH.", MCH.JobID)]
+        MCH_ST_SoloMode = 8400,
+
+        #endregion
+
         #region Variant
 
         [Variant]

@@ -162,6 +162,14 @@ namespace XIVSlothCombo.CustomComboNS.Functions
             return false;
         }
 
+        public static uint GetSpellId()
+        {
+            if (CurrentTarget is not IBattleChara chara )
+                return 0;
+
+            return chara.IsCasting ? chara.CastActionId : 0;
+        }
+
         /// <summary> Sets the player's target. </summary>
         /// <param name="target"> Target must be a game object that the player can normally click and target. </param>
         public static void SetTarget(IGameObject? target) => Svc.Targets.Target = target;

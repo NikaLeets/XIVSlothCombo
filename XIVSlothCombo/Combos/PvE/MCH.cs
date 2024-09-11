@@ -596,7 +596,156 @@ internal class MCH
         }
     }
 
-    internal class MCH_AoE_SimpleMode : CustomCombo
+    internal class MCH_ST_SoloMode : CustomCombo
+    {
+        internal static MCHOpenerLogic MCHOpener = new();
+
+        protected internal override CustomComboPreset Preset { get; } = CustomComboPreset.MCH_ST_SoloMode;
+
+        protected override uint Invoke(uint actionID, uint lastComboMove, float comboTime, byte level)
+        {
+            bool interruptReady = ActionReady(All.HeadGraze) && CanInterruptEnemy() && CanDelayedWeave(actionID);
+            float heatblastRC = GetCooldown(Heatblast).CooldownTotal;
+
+            bool drillCD = !LevelChecked(Drill) || (!TraitLevelChecked(Traits.EnhancedMultiWeapon) &&
+                                                    GetCooldownRemainingTime(Drill) > heatblastRC * 6) ||
+                           (TraitLevelChecked(Traits.EnhancedMultiWeapon) &&
+                            GetRemainingCharges(Drill) < GetMaxCharges(Drill) &&
+                            GetCooldownRemainingTime(Drill) > heatblastRC * 6);
+
+            bool anchorCD = !LevelChecked(AirAnchor) ||
+                            (LevelChecked(AirAnchor) && GetCooldownRemainingTime(AirAnchor) > heatblastRC * 6);
+
+            bool sawCD = !LevelChecked(Chainsaw) ||
+                         (LevelChecked(Chainsaw) && GetCooldownRemainingTime(Chainsaw) > heatblastRC * 6);
+            float GCD = GetCooldown(OriginalHook(SlugShot)).CooldownTotal;
+
+            bool reassembledExcavator =
+                (IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble) && Config.MCH_ST_Reassembled[0] &&
+                 (HasEffect(Buffs.Reassembled) || !HasEffect(Buffs.Reassembled))) ||
+                (IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble) && !Config.MCH_ST_Reassembled[0] &&
+                 !HasEffect(Buffs.Reassembled)) ||
+                (!HasEffect(Buffs.Reassembled) && GetRemainingCharges(Reassemble) <= Config.MCH_ST_ReassemblePool) ||
+                !IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble);
+            int BSUsed = ActionWatching.CombatActions.Count(x => x == BarrelStabilizer);
+
+            if (actionID is SlugShot or HeatedSlugShot)
+            {
+                // Interrupt
+                if (IsEnabled(CustomComboPreset.MCH_ST_Adv_Interrupt) && interruptReady)
+                {
+                    // Eventually plan to limit this to specific spells only (like Infatuation/Tail Screw, etc).  
+                    // you don't actually want to interrupt all things in Deep Dungeons indiscriminantly
+                    return All.HeadGraze;
+                }
+
+                if (CanInterruptEnemy())
+                {
+                    uint spellID = GetSpellId();
+
+                    Svc.Log.Verbose("******  Target Casting Spell ID: " + spellID);
+                }
+
+                // All weaves
+                if (CanWeave(ActionWatching.LastWeaponskill) &&
+                    !ActionWatching.HasDoubleWeaved())
+                {
+                    // Simplified logic works both inside and outside of HC for Deep Dungeons.  This allows GaussRound/Ricochet
+                    // to be weaved in immediately after HC is activated before the first heat blast.  Helps reduce overcapping
+                    // due to travelling between mobs
+                    if (IsEnabled(CustomComboPreset.MCH_ST_Adv_GaussRicochet) 
+                       )
+                    {
+                        if (ActionReady(OriginalHook(GaussRound)) &&
+                            GetRemainingCharges(OriginalHook(GaussRound)) >=
+                            GetRemainingCharges(OriginalHook(Ricochet)))
+                            return OriginalHook(GaussRound);
+
+                        if (ActionReady(OriginalHook(Ricochet)) &&
+                            GetRemainingCharges(OriginalHook(Ricochet)) > GetRemainingCharges(OriginalHook(GaussRound)))
+                            return OriginalHook(Ricochet);
+                    }
+
+                    // Healing
+                    if (IsEnabled(CustomComboPreset.MCH_ST_Adv_SecondWind) &&
+                        PlayerHealthPercentageHp() <= Config.MCH_ST_SecondWindThreshold &&
+                        ActionReady(All.SecondWind) && !Gauge.IsOverheated)
+                        return All.SecondWind;
+                }
+
+  
+                // Heatblast
+                if (IsEnabled(CustomComboPreset.MCH_ST_Adv_Heatblast) &&
+                    Gauge.IsOverheated && LevelChecked(OriginalHook(Heatblast)))
+                    return OriginalHook(Heatblast);
+
+                // Reassemble and Tools
+               if (ReassembledTools(ref actionID, Gauge, lastComboMove))
+                    return actionID;
+
+                // Excavator
+  
+                // 1-2-3 Combo
+                if (comboTime > 0)
+                {
+                    if (lastComboMove is SplitShot && LevelChecked(OriginalHook(SlugShot)))
+                        return OriginalHook(SlugShot);
+
+                    if (IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble) && Config.MCH_ST_Reassembled[4] &&
+                        lastComboMove == OriginalHook(SlugShot) &&
+                        !LevelChecked(Drill) && !HasEffect(Buffs.Reassembled) && ActionReady(Reassemble))
+                        return Reassemble;
+
+                    if (lastComboMove is SlugShot && LevelChecked(OriginalHook(CleanShot)))
+                        return OriginalHook(CleanShot);
+                }
+
+                return OriginalHook(SplitShot);
+            }
+
+            return actionID;
+        }
+        private static bool ReassembledTools(ref uint actionID, MCHGauge gauge, uint lastComboMove)
+        {
+            // I think for overcap protection setting to 80 is better here
+            bool battery = Svc.Gauges.Get<MCHGauge>().Battery >= 80;  
+
+            if ( // Drill needs to by higher priority to HotShot until Air Anchor is learned due to higher potency
+               LevelChecked(Drill) &&
+               !JustUsed(Drill) &&
+               (GetCooldownRemainingTime(Drill) <= GetCooldownRemainingTime(OriginalHook(SplitShot)) + 0.25 ||
+                ActionReady(Drill)) &&
+                // Maybe make this configurable?  It's almost always better to hold drill a few GCDs for reassumble
+                // to be ready rather than blow drill and delay the next reassembled drill for 15sec or whatever
+                (GetCooldownRemainingTime(Reassemble) >= 7.5) && 
+                GetCooldownRemainingTime(Wildfire) is >= 20 or <= 10)
+            {
+                actionID = Drill;
+
+                return true;
+            }
+
+            if (
+                LevelChecked(OriginalHook(AirAnchor)) &&
+                !battery &&
+                   (!LevelChecked(AirAnchor) && lastComboMove is not SlugShot && LevelChecked(CleanShot)) && // Don't do HotShot if the combo is ready to do Clean Shot because it's higher potency (also will fall out to allow reassembled clean shot)
+                (GetCooldownRemainingTime(OriginalHook(AirAnchor)) <=
+                    GetCooldownRemainingTime(OriginalHook(SplitShot)) + 0.25 || ActionReady(OriginalHook(AirAnchor))))
+            {
+                actionID = OriginalHook(AirAnchor);
+
+                return true;
+            }
+
+
+
+            return false;
+        }
+    }
+
+
+
+internal class MCH_AoE_SimpleMode : CustomCombo
     {
         protected internal override CustomComboPreset Preset { get; } = CustomComboPreset.MCH_AoE_SimpleMode;
 
