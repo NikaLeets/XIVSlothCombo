@@ -48,7 +48,8 @@ internal class MCH
         DoubleCheck = 36979,
         CheckMate = 36980,
         Excavator = 36981,
-        FullMetalField = 36982;
+        FullMetalField = 36982,
+        Peloton = 1199;
 
     protected static MCHGauge? Gauge = GetJobGauge<MCHGauge>();
 
@@ -56,6 +57,7 @@ internal class MCH
     {
         public const ushort
             Reassembled = 851,
+            Peloton = 1199,
             Tactician = 1951,
             Wildfire = 1946,
             Overheated = 2688,
@@ -82,7 +84,9 @@ internal class MCH
     {
         public static UserInt
             MCH_ST_SecondWindThreshold = new("MCH_ST_SecondWindThreshold", 25),
+            MCH_Solo_SecondWindThreshold = new("MCH_Solo_SecondWindThreshold", 25),
             MCH_AoE_SecondWindThreshold = new("MCH_AoE_SecondWindThreshold", 25),
+            MCH_Solo_HoldDrillThreshold = new("MCH_Solo_HoldDrillThreshold", 7),
             MCH_VariantCure = new("MCH_VariantCure"),
             MCH_AoE_TurretUsage = new("MCH_AoE_TurretUsage"),
             MCH_ST_ReassemblePool = new("MCH_ST_ReassemblePool", 0),
@@ -93,7 +97,8 @@ internal class MCH
 
         public static UserBoolArray
             MCH_ST_Reassembled = new("MCH_ST_Reassembled"),
-            MCH_AoE_Reassembled = new("MCH_AoE_Reassembled");
+            MCH_AoE_Reassembled = new("MCH_AoE_Reassembled"),
+            MCH_Solo_Interrupts = new("MCH_Solo_Interrupts");
 
         public static UserBool
             MCH_AoE_Hypercharge = new("MCH_AoE_Hypercharge");
@@ -604,7 +609,8 @@ internal class MCH
 
         protected override uint Invoke(uint actionID, uint lastComboMove, float comboTime, byte level)
         {
-            bool interruptReady = ActionReady(All.HeadGraze) && CanInterruptEnemy() && CanDelayedWeave(actionID);
+            // Want to prioritize key interupts for survivability over DPS when solo
+            bool interruptReady = ActionReady(All.HeadGraze) && CanInterruptEnemy();
             float heatblastRC = GetCooldown(Heatblast).CooldownTotal;
 
             bool drillCD = !LevelChecked(Drill) || (!TraitLevelChecked(Traits.EnhancedMultiWeapon) &&
@@ -616,6 +622,7 @@ internal class MCH
             bool anchorCD = !LevelChecked(AirAnchor) ||
                             (LevelChecked(AirAnchor) && GetCooldownRemainingTime(AirAnchor) > heatblastRC * 6);
 
+            // TODO:  Think about what the right answer is for EO, but it probably is to just use the regular advanced combo
             bool sawCD = !LevelChecked(Chainsaw) ||
                          (LevelChecked(Chainsaw) && GetCooldownRemainingTime(Chainsaw) > heatblastRC * 6);
             float GCD = GetCooldown(OriginalHook(SlugShot)).CooldownTotal;
@@ -631,29 +638,37 @@ internal class MCH
 
             if (actionID is SlugShot or HeatedSlugShot)
             {
-                // Interrupt
-                if (IsEnabled(CustomComboPreset.MCH_ST_Adv_Interrupt) && interruptReady)
+                if (IsEnabled(CustomComboPreset.MCH_ST_Solo_Peloton) 
+                    && !CustomComboFunctions.HasEffect(Buffs.Peloton) 
+                    && !CustomComboFunctions.InCombat() && !HasBattleTarget())
                 {
-                    // Eventually plan to limit this to specific spells only (like Infatuation/Tail Screw, etc).  
-                    // you don't actually want to interrupt all things in Deep Dungeons indiscriminantly
+                    return All.Peloton;
+                }
+                uint interruptId = GetSpellId();
+                // Interrupt
+                if ( IsEnabled(CustomComboPreset.MCH_ST_Solo_SmartInterrupts) 
+                    && interruptReady && All.IsKeyDeepDungeonSpell( interruptId )   )
+                {
                     return All.HeadGraze;
                 }
 
-                if (CanInterruptEnemy())
-                {
-                    uint spellID = GetSpellId();
-
-                    Svc.Log.Verbose("******  Target Casting Spell ID: " + spellID);
-                }
-
+                // Prioritize emergency heals over DPS (I.e, stepping on a landmine)
+                if (IsEnabled(CustomComboPreset.MCH_ST_Solo_SecondWind) &&
+                   PlayerHealthPercentageHp() <= Config.MCH_Solo_SecondWindThreshold &&
+                   ActionReady(All.SecondWind))
+                    return All.SecondWind;
+                
                 // All weaves
                 if (CanWeave(ActionWatching.LastWeaponskill) &&
+                    !HasEffect(Buffs.Reassembled) &&
+                    // TODO:  Think about possibly removing the double weave check
+                    // There are several places where you are slowed it it might be helpful
                     !ActionWatching.HasDoubleWeaved())
                 {
                     // Simplified logic works both inside and outside of HC for Deep Dungeons.  This allows GaussRound/Ricochet
                     // to be weaved in immediately after HC is activated before the first heat blast.  Helps reduce overcapping
                     // due to travelling between mobs
-                    if (IsEnabled(CustomComboPreset.MCH_ST_Adv_GaussRicochet) 
+                    if (IsEnabled(CustomComboPreset.MCH_ST_Solo_GaussRicochet) 
                        )
                     {
                         if (ActionReady(OriginalHook(GaussRound)) &&
@@ -666,16 +681,10 @@ internal class MCH
                             return OriginalHook(Ricochet);
                     }
 
-                    // Healing
-                    if (IsEnabled(CustomComboPreset.MCH_ST_Adv_SecondWind) &&
-                        PlayerHealthPercentageHp() <= Config.MCH_ST_SecondWindThreshold &&
-                        ActionReady(All.SecondWind) && !Gauge.IsOverheated)
-                        return All.SecondWind;
                 }
 
-  
                 // Heatblast
-                if (IsEnabled(CustomComboPreset.MCH_ST_Adv_Heatblast) &&
+                if (IsEnabled(CustomComboPreset.MCH_ST_Solo_Heatblast) &&
                     Gauge.IsOverheated && LevelChecked(OriginalHook(Heatblast)))
                     return OriginalHook(Heatblast);
 
@@ -691,11 +700,6 @@ internal class MCH
                     if (lastComboMove is SplitShot && LevelChecked(OriginalHook(SlugShot)))
                         return OriginalHook(SlugShot);
 
-                    if (IsEnabled(CustomComboPreset.MCH_ST_Adv_Reassemble) && Config.MCH_ST_Reassembled[4] &&
-                        lastComboMove == OriginalHook(SlugShot) &&
-                        !LevelChecked(Drill) && !HasEffect(Buffs.Reassembled) && ActionReady(Reassemble))
-                        return Reassemble;
-
                     if (lastComboMove is SlugShot && LevelChecked(OriginalHook(CleanShot)))
                         return OriginalHook(CleanShot);
                 }
@@ -708,17 +712,25 @@ internal class MCH
         private static bool ReassembledTools(ref uint actionID, MCHGauge gauge, uint lastComboMove)
         {
             // I think for overcap protection setting to 80 is better here
-            bool battery = Svc.Gauges.Get<MCHGauge>().Battery >= 80;  
+            bool battery = Svc.Gauges.Get<MCHGauge>().Battery >= 80;
+            bool CDRemaining = GetCooldownRemainingTime(Drill) <= GetCooldownRemainingTime(OriginalHook(SplitShot)) + 0.25;
 
             if ( // Drill needs to by higher priority to HotShot until Air Anchor is learned due to higher potency
-               LevelChecked(Drill) &&
-               !JustUsed(Drill) &&
-               (GetCooldownRemainingTime(Drill) <= GetCooldownRemainingTime(OriginalHook(SplitShot)) + 0.25 ||
-                ActionReady(Drill)) &&
-                // Maybe make this configurable?  It's almost always better to hold drill a few GCDs for reassumble
-                // to be ready rather than blow drill and delay the next reassembled drill for 15sec or whatever
-                (GetCooldownRemainingTime(Reassemble) >= 7.5) && 
-                GetCooldownRemainingTime(Wildfire) is >= 20 or <= 10)
+                IsEnabled(CustomComboPreset.MCH_ST_Solo_Drill) &&
+                LevelChecked(Drill) &&
+                !JustUsed(Drill) && (
+                    GetCooldownRemainingTime(Drill) <= GetCooldownRemainingTime(OriginalHook(SplitShot)) + 0.25 ||
+                    ActionReady(Drill)
+                ) && (
+                   // Maybe make this configurable?  It's almost always better to hold drill a few GCDs for reassumble
+                   // to be ready rather than blow drill and delay the next reassembled drill for 15sec or whatever
+                   // Also need to check reassembled buff if it was activated in as a weave
+                   HasEffect(Buffs.Reassembled) || (
+                        GetCooldownRemainingTime(Reassemble) >= 7.5 &&
+                        // in PotD, don't waste drill on mobs about to die.  Calibrated to max Aetherpool @ 101+  Should think about scaling this to HoH
+                        CustomComboFunctions.EnemyHealthCurrentHp() > 2750
+                    )
+                ) )
             {
                 actionID = Drill;
 
@@ -726,9 +738,12 @@ internal class MCH
             }
 
             if (
+                IsEnabled(CustomComboPreset.MCH_ST_Solo_HotShot) &&
                 LevelChecked(OriginalHook(AirAnchor)) &&
+                ActionReady(OriginalHook(AirAnchor)) &&
                 !battery &&
-                   (!LevelChecked(AirAnchor) && lastComboMove is not SlugShot && LevelChecked(CleanShot)) && // Don't do HotShot if the combo is ready to do Clean Shot because it's higher potency (also will fall out to allow reassembled clean shot)
+                  // Don't do HotShot if the combo is ready to do Clean Shot because it's higher potency (also will fall out to allow reassembled clean shot)
+                  (!LevelChecked(AirAnchor) && lastComboMove is not SlugShot && LevelChecked(CleanShot)) && 
                 (GetCooldownRemainingTime(OriginalHook(AirAnchor)) <=
                     GetCooldownRemainingTime(OriginalHook(SplitShot)) + 0.25 || ActionReady(OriginalHook(AirAnchor))))
             {
@@ -736,8 +751,6 @@ internal class MCH
 
                 return true;
             }
-
-
 
             return false;
         }

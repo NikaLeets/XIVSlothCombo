@@ -66,6 +66,31 @@ namespace XIVSlothCombo.Combos.PvE
                 Feint = 1195;
         }
 
+        public const uint
+            Infatuation = 6397,
+            IceSpikes = 6943,
+            Flood = 7033,
+            Paralyze3_Bhoot = 6386,
+            Paralyze3_Persona = 6388,
+            Scream = 6410,
+            HorrisonousBlast = 6242,
+            Mucin = 7014;
+
+        public static uint[] deepDungeonSpells = new uint[]
+        {
+        Infatuation, IceSpikes, Flood, Mucin, Paralyze3_Bhoot, Scream, HorrisonousBlast, Paralyze3_Persona
+        };
+
+        public static bool IsKeyDeepDungeonSpell( uint spellID )
+        {
+            foreach( uint ddSpellID in deepDungeonSpells )
+            {
+                if (ddSpellID == spellID) return true;
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// Quick Level, Offcooldown, spellweave, and MP check of Lucid Dreaming
         /// </summary>

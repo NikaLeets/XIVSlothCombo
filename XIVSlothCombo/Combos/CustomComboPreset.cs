@@ -1879,8 +1879,38 @@ namespace XIVSlothCombo.Combos
 
         #region Solo ST
         [ReplaceSkill(MCH.SlugShot, MCH.HeatedSlugShot)]
-        [CustomComboInfo("Solo Mode - Single Target", "Replaces Slug Shot with a one-button full single target rotation.\nThis feature is optimized for Solo play, tailored for PotD/HoH.", MCH.JobID)]
+        [CustomComboInfo("Solo Mode - Single Target", "Replaces Slug Shot with a one-button full single target rotation.\nThis feature is optimized for Solo play, tailored for PotD/HoH.\n" +
+                          "LVL 70+ tools not supported, interrupts and heals prioritize DPS GCDs, overcap protection is more aggressive,\n " +
+                          "and drill is not used at low mob HP health.  Smart interrupts only fire on select, particularly dangerous mobs", MCH.JobID)]
         MCH_ST_SoloMode = 8400,
+
+        [ParentCombo(MCH_ST_SoloMode)]
+        [CustomComboInfo("Gauss Round / Ricochet", "Adds Gauss Round and Ricochet to the rotation. Will prevent overcapping.", MCH.JobID)]
+        MCH_ST_Solo_GaussRicochet = 8401,
+
+        [ParentCombo(MCH_ST_SoloMode)]
+        [CustomComboInfo("Heat Blast", "Adds Heat Blast to the rotation", MCH.JobID)]
+        MCH_ST_Solo_Heatblast = 8402,
+
+        [ParentCombo(MCH_ST_SoloMode)]
+        [CustomComboInfo("Drill Option", "Adds Drill to the rotation. Will prevent overkill, Will hold Drill if Reassemble is off cooldown", MCH.JobID)]
+        MCH_ST_Solo_Drill = 8403,
+
+        [ParentCombo(MCH_ST_SoloMode)]
+        [CustomComboInfo("Hot Shot Option", "Adds Hot Shot to the rotation.", MCH.JobID)]
+        MCH_ST_Solo_HotShot = 8404,
+
+        [ParentCombo(MCH_ST_SoloMode)]
+        [CustomComboInfo("Peloton Option", "Adds Peloton when out of combat and no current target.", MCH.JobID)]
+        MCH_ST_Solo_Peloton = 8405,
+
+        [ParentCombo(MCH_ST_SoloMode)]
+        [CustomComboInfo("EXPERIMENTAL: Smart Interrupt Option", "Enable interrupts against select key spells. Currently only for PotD.", MCH.JobID)]
+        MCH_ST_Solo_SmartInterrupts = 8406,
+
+        [ParentCombo(MCH_ST_SoloMode)]
+        [CustomComboInfo("Second Wind Option", "Use Second Wind when below the set HP percentage.", MCH.JobID)]
+        MCH_ST_Solo_SecondWind = 8407,
 
         #endregion
 
